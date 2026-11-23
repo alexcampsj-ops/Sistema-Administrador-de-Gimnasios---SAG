@@ -12,6 +12,7 @@ from utils.validators import validar_fecha, confirmar
 from utils.helpers import formatear_fecha
 
 console = Console()
+# Instancias de los servicios usados por el entrenador
 _clase_svc = ClaseService()
 _rutina_svc = RutinaService()
 _asistencia_svc = AsistenciaService()
@@ -20,7 +21,11 @@ _cliente_svc = ClienteService()
 
 
 def ejecutar(empleado: Empleado) -> None:
-    """Menú principal del entrenador (RF-12 a RF-16)."""
+    """Menú principal del entrenador (RF-12 a RF-16).
+
+    Presenta las 5 operaciones disponibles. Captura errores de servicio
+    y los muestra sin cerrar el menú.
+    """
     opciones = {
         "1": ("Mi horario", _ver_horario),
         "2": ("Mis clases", _ver_clases),
@@ -55,6 +60,11 @@ def ejecutar(empleado: Empleado) -> None:
 # RF-12 — Mi horario
 # ------------------------------------------------------------------
 def _ver_horario(empleado: Empleado) -> None:
+    """Muestra el horario asignado al entrenador que inició sesión (RF-12).
+
+    Usa el codigo_empleado del objeto Empleado activo para filtrar
+    solo sus propios horarios.
+    """
     horarios = _empleado_svc.listar_horarios(empleado.codigo_empleado)
     if not horarios:
         console.print("[yellow]No tienes horarios asignados.[/]")
@@ -75,6 +85,11 @@ def _ver_horario(empleado: Empleado) -> None:
 # RF-13 — Mis clases
 # ------------------------------------------------------------------
 def _ver_clases(empleado: Empleado) -> None:
+    """Muestra las clases asignadas al entrenador y permite ver sus inscritos (RF-13).
+
+    Tras mostrar las clases, pregunta si se quiere ver el detalle de inscritos
+    de alguna clase específica. Para cada inscrito, busca su nombre por ID.
+    """
     clases = _clase_svc.listar_por_empleado(empleado.codigo_empleado)
     if not clases:
         console.print("[yellow]No tienes clases asignadas.[/]")
@@ -108,6 +123,7 @@ def _ver_clases(empleado: Empleado) -> None:
             ti.add_column("Fecha inscripción")
             ti.add_column("Estado")
             for i in inscritos:
+                # Busca el nombre del cliente por su código para mostrarlo legible
                 cliente = _cliente_svc.obtener_por_id(i.codigo_cliente)
                 nombre = cliente.nombre_completo if cliente else str(i.codigo_cliente)
                 ti.add_row(nombre, formatear_fecha(i.fecha), i.estado)
@@ -119,6 +135,11 @@ def _ver_clases(empleado: Empleado) -> None:
 # RF-14 — Registrar rutina
 # ------------------------------------------------------------------
 def _registrar_rutina(empleado: Empleado) -> None:
+    """Registra una nueva rutina de entrenamiento para un cliente (RF-14).
+
+    El entrenador activo queda como responsable de la rutina.
+    Las observaciones son opcionales.
+    """
     console.rule("Registrar rutina")
     termino = input("Buscar cliente (nombre o celular): ").strip()
     clientes = _cliente_svc.buscar(termino)
@@ -129,6 +150,7 @@ def _registrar_rutina(empleado: Empleado) -> None:
         console.print(f"  [{c.codigo_cliente}] {c.nombre_completo}")
     codigo_cliente = int(input("Código del cliente: "))
 
+    # Bucle hasta recibir una fecha válida
     while True:
         fecha_txt = input("Fecha (YYYY-MM-DD): ").strip()
         fecha = validar_fecha(fecha_txt)
@@ -137,12 +159,14 @@ def _registrar_rutina(empleado: Empleado) -> None:
         console.print("[red]Formato inválido.[/]")
 
     objetivo = input("Objetivo: ").strip()
+    # "or None" convierte cadena vacía a None para guardarlo como NULL en BD
     obs = input("Observaciones (opcional): ").strip() or None
 
     if not confirmar():
         console.print("Operación cancelada.")
         return
 
+    # Registra la rutina con el codigo_empleado del entrenador activo
     codigo = _rutina_svc.registrar(
         fecha, objetivo, obs, codigo_cliente, empleado.codigo_empleado
     )
@@ -154,7 +178,13 @@ def _registrar_rutina(empleado: Empleado) -> None:
 # RF-15 — Consultar / editar rutinas
 # ------------------------------------------------------------------
 def _consultar_rutinas(empleado: Empleado) -> None:
+    """Lista las rutinas del entrenador y permite editar objetivo/observaciones (RF-15).
+
+    Tras mostrar la tabla, pregunta si se quiere editar alguna rutina.
+    Solo actualiza los campos que el usuario proporcione (actualización parcial).
+    """
     console.rule("Rutinas registradas")
+    # Solo muestra las rutinas creadas por este entrenador
     rutinas = _rutina_svc.listar_por_entrenador(empleado.codigo_empleado)
     if not rutinas:
         console.print("[yellow]Sin rutinas registradas.[/]")
@@ -167,6 +197,7 @@ def _consultar_rutinas(empleado: Empleado) -> None:
     tabla.add_column("Fecha")
     tabla.add_column("Objetivo")
     for r in rutinas:
+        # Busca el nombre del cliente para mostrarlo en lugar del ID
         cliente = _cliente_svc.obtener_por_id(r.codigo_cliente)
         nombre = cliente.nombre_completo if cliente else str(r.codigo_cliente)
         tabla.add_row(
@@ -179,6 +210,7 @@ def _consultar_rutinas(empleado: Empleado) -> None:
     if editar:
         nuevo_objetivo = input("Nuevo objetivo (Enter para no cambiar): ").strip()
         nueva_obs = input("Nuevas observaciones (Enter para no cambiar): ").strip()
+        # Solo agrega al dict los campos que el usuario llenó
         campos = {}
         if nuevo_objetivo:
             campos["objetivo"] = nuevo_objetivo
@@ -186,6 +218,7 @@ def _consultar_rutinas(empleado: Empleado) -> None:
             campos["observaciones"] = nueva_obs
         if campos:
             if confirmar():
+                # Pasa solo los campos modificados al servicio (actualización parcial)
                 _rutina_svc.editar(int(editar), **campos)
                 console.print("[green]Rutina actualizada.[/]")
     input("\nEnter para continuar...")
@@ -195,6 +228,12 @@ def _consultar_rutinas(empleado: Empleado) -> None:
 # RF-16 — Asistencia de un cliente
 # ------------------------------------------------------------------
 def _ver_asistencia_cliente(_empleado) -> None:
+    """Muestra el historial de asistencias de un cliente con filtro de fechas (RF-16).
+
+    Las fechas son opcionales: si no se proporcionan, muestra todas las asistencias.
+    validar_fecha devuelve None si la cadena está vacía o es inválida,
+    y listar_por_cliente acepta None para omitir ese filtro.
+    """
     console.rule("Asistencia de cliente")
     termino = input("Buscar cliente (nombre o celular): ").strip()
     clientes = _cliente_svc.buscar(termino)
@@ -205,6 +244,7 @@ def _ver_asistencia_cliente(_empleado) -> None:
         console.print(f"  [{c.codigo_cliente}] {c.nombre_completo}")
     codigo_cliente = int(input("Código del cliente: "))
 
+    # Fechas opcionales: si el usuario no escribe nada, quedan como None
     desde_txt = input("Fecha desde (YYYY-MM-DD, Enter para todo): ").strip()
     hasta_txt = input("Fecha hasta (YYYY-MM-DD, Enter para hoy): ").strip()
     desde = validar_fecha(desde_txt) if desde_txt else None
@@ -221,6 +261,7 @@ def _ver_asistencia_cliente(_empleado) -> None:
         for a in asistencias:
             tabla.add_row(
                 formatear_fecha(a.fecha), str(a.hora),
+                # Si no hay rutina asociada, muestra "—"
                 str(a.codigo_rutina) if a.codigo_rutina else "—",
             )
         console.print(tabla)

@@ -14,6 +14,7 @@ from utils.validators import validar_fecha, validar_correo, confirmar
 from utils.helpers import formatear_fecha, calcular_edad
 
 console = Console()
+# Instancias de todos los servicios usados por el administrador
 _empleado_svc = EmpleadoService()
 _cliente_svc = ClienteService()
 _membresia_svc = MembresiaService()
@@ -24,7 +25,12 @@ _reporte_svc = ReporteService()
 
 
 def ejecutar(empleado: Empleado) -> None:
-    """Menú principal del administrador (RF-17 a RF-28)."""
+    """Menú principal del administrador (RF-17 a RF-28).
+
+    Da acceso a 12 secciones del sistema. Cada sección tiene su propia
+    función de submenú (prefijo _menu_). Los errores se capturan y muestran
+    sin cerrar el menú.
+    """
     opciones = {
         "1":  ("Empleados", _menu_empleados),
         "2":  ("Roles", _menu_roles),
@@ -66,6 +72,11 @@ def ejecutar(empleado: Empleado) -> None:
 # RF-17 — Empleados
 # ------------------------------------------------------------------
 def _menu_empleados(_empleado) -> None:
+    """Gestión de empleados: listar, agregar, editar y cambiar estado (RF-17).
+
+    Al agregar se valida el formato del correo con validar_correo().
+    Al editar solo se actualizan los campos que el usuario modifique.
+    """
     while True:
         console.rule("Empleados")
         console.print("1. Listar  2. Agregar  3. Editar  4. Activar/Desactivar  0. Volver")
@@ -93,6 +104,7 @@ def _menu_empleados(_empleado) -> None:
             nombre = input("Nombre: ").strip()
             usuario = input("Usuario: ").strip()
             contrasena = input("Contraseña: ").strip()
+            # Bucle hasta recibir un correo con formato válido
             while True:
                 correo = input("Correo: ").strip()
                 if validar_correo(correo):
@@ -106,6 +118,7 @@ def _menu_empleados(_empleado) -> None:
             codigo = int(input("Código del empleado a editar: "))
             nombre = input("Nuevo nombre (Enter para no cambiar): ").strip()
             correo = input("Nuevo correo (Enter para no cambiar): ").strip()
+            # Solo agrega campos al dict si el usuario proporcionó un valor
             campos = {}
             if nombre:
                 campos["nombre"] = nombre
@@ -117,6 +130,7 @@ def _menu_empleados(_empleado) -> None:
         elif op == "4":
             codigo = int(input("Código del empleado: "))
             estado_txt = input("¿Activar o desactivar? (A/D): ").strip().upper()
+            # Convierte "A" → True y "D" → False para el servicio
             if estado_txt in ("A", "D") and confirmar():
                 _empleado_svc.cambiar_estado(codigo, estado_txt == "A")
                 console.print("[green]Estado actualizado.[/]")
@@ -126,6 +140,11 @@ def _menu_empleados(_empleado) -> None:
 # RF-18 — Roles
 # ------------------------------------------------------------------
 def _menu_roles(_empleado) -> None:
+    """Gestión de roles: listar, agregar y editar (RF-18).
+
+    Opera directamente con la BD a través de get_connection porque
+    no existe un RolService; los roles raramente cambian.
+    """
     from config.db import get_connection
     while True:
         console.rule("Roles")
@@ -186,6 +205,11 @@ def _menu_roles(_empleado) -> None:
 # RF-19 — Horarios
 # ------------------------------------------------------------------
 def _menu_horarios(_empleado) -> None:
+    """Gestión de horarios de empleados: ver, asignar/editar y eliminar (RF-19).
+
+    Delega al EmpleadoService que usa INSERT ... ON DUPLICATE KEY UPDATE
+    para manejar tanto inserción como actualización de horarios.
+    """
     while True:
         console.rule("Horarios")
         console.print("1. Ver horarios de empleado  2. Asignar/editar  3. Eliminar  0. Volver")
@@ -226,6 +250,11 @@ def _menu_horarios(_empleado) -> None:
 # RF-20 — Clientes
 # ------------------------------------------------------------------
 def _menu_clientes(_empleado) -> None:
+    """Gestión de clientes: buscar, editar domicilio y cambiar estado (RF-20).
+
+    calcular_edad() se usa para mostrar la edad calculada en el momento
+    de la consulta sin necesidad de guardarla en la BD.
+    """
     while True:
         console.rule("Clientes")
         console.print("1. Buscar  2. Editar  3. Dar de baja / reactivar  0. Volver")
@@ -248,6 +277,7 @@ def _menu_clientes(_empleado) -> None:
                     tabla.add_row(
                         str(c.codigo_cliente), c.nombre_completo,
                         formatear_fecha(c.fecha_nacimiento),
+                        # Calcula la edad al vuelo sin guardarla en la BD
                         str(calcular_edad(c.fecha_nacimiento)),
                         "[green]Activo[/]" if c.estado else "[red]Baja[/]",
                     )
@@ -257,6 +287,7 @@ def _menu_clientes(_empleado) -> None:
             codigo = int(input("Código del cliente: "))
             colonia = input("Nueva colonia (Enter para no cambiar): ").strip()
             calle = input("Nueva calle (Enter para no cambiar): ").strip()
+            # Solo se actualiza lo que el usuario proporcionó
             campos = {}
             if colonia:
                 campos["colonia"] = colonia
@@ -268,6 +299,7 @@ def _menu_clientes(_empleado) -> None:
         elif op == "3":
             codigo = int(input("Código del cliente: "))
             estado_txt = input("¿Dar de baja o reactivar? (B/R): ").strip().upper()
+            # "B" → False (baja), "R" → True (reactivar)
             if estado_txt in ("B", "R") and confirmar():
                 _cliente_svc.cambiar_estado(codigo, estado_txt == "R")
                 console.print("[green]Estado actualizado.[/]")
@@ -277,6 +309,12 @@ def _menu_clientes(_empleado) -> None:
 # RF-21 — Tipos de membresía y beneficios
 # ------------------------------------------------------------------
 def _menu_tipos_membresia(_empleado) -> None:
+    """CRUD de tipos de membresía y listado/creación de beneficios (RF-21).
+
+    Opera directamente con la BD para tipos y beneficios porque no hay
+    un servicio dedicado para estas tablas de catálogo.
+    La edición construye el UPDATE dinámicamente igual que los servicios.
+    """
     from config.db import get_connection
     while True:
         console.rule("Tipos de membresía y beneficios")
@@ -327,6 +365,7 @@ def _menu_tipos_membresia(_empleado) -> None:
             nombre = input("Nuevo nombre (Enter para no cambiar): ").strip()
             dias_txt = input("Nueva duración en días (Enter para no cambiar): ").strip()
             monto_txt = input("Nuevo monto (Enter para no cambiar): ").strip()
+            # Solo actualiza los campos que el usuario proporcionó
             campos = {}
             if nombre:
                 campos["nombre"] = nombre
@@ -337,6 +376,7 @@ def _menu_tipos_membresia(_empleado) -> None:
             if campos and confirmar():
                 conn = get_connection()
                 try:
+                    # Construye "nombre=%s, duracion_dias=%s" dinámicamente
                     set_cl = ", ".join(f"{k}=%s" for k in campos)
                     cursor = conn.cursor()
                     cursor.execute(
@@ -387,6 +427,11 @@ def _menu_tipos_membresia(_empleado) -> None:
 # RF-22 — Membresías
 # ------------------------------------------------------------------
 def _menu_membresias(_empleado) -> None:
+    """Búsqueda de membresías y actualización masiva de vencidas (RF-22).
+
+    marcar_vencidas() ejecuta un UPDATE en la BD que cambia de una sola vez
+    todas las membresías activas cuya fecha ya pasó. Devuelve cuántas actualizó.
+    """
     while True:
         console.rule("Membresías")
         console.print("1. Buscar  2. Marcar vencidas  0. Volver")
@@ -416,6 +461,7 @@ def _menu_membresias(_empleado) -> None:
             input("\nEnter para continuar...")
         elif op == "2":
             if confirmar("¿Marcar como vencidas las membresías expiradas? (S/N): "):
+                # Retorna el número de filas afectadas (cursor.rowcount)
                 n = _membresia_svc.marcar_vencidas()
                 console.print(f"[green]{n} membresía(s) marcada(s) como vencidas.[/]")
 
@@ -424,6 +470,11 @@ def _menu_membresias(_empleado) -> None:
 # RF-23 — Pagos y métodos de pago
 # ------------------------------------------------------------------
 def _menu_pagos(_empleado) -> None:
+    """Historial de pagos por membresía y gestión de métodos de pago (RF-23).
+
+    El historial busca por membresía o cliente. Los métodos de pago
+    se gestionan directamente con la BD (sin servicio dedicado).
+    """
     from config.db import get_connection
     while True:
         console.rule("Pagos y métodos de pago")
@@ -435,6 +486,7 @@ def _menu_pagos(_empleado) -> None:
             termino = input("Código de membresía o nombre de cliente: ").strip()
             mems = _membresia_svc.buscar(termino)
             for m in mems:
+                # Obtiene los pagos de cada membresía encontrada
                 pagos = _membresia_svc.obtener_pagos(m.codigo_membresia)
                 console.print(f"\n[bold]{m.codigo_membresia}[/]")
                 tabla = Table(box=box.SIMPLE)
@@ -487,6 +539,11 @@ def _menu_pagos(_empleado) -> None:
 # RF-24 — Clases
 # ------------------------------------------------------------------
 def _menu_clases(_empleado) -> None:
+    """CRUD de clases y control de apertura/cierre (RF-24).
+
+    Agrega clases con estado=1 (activa) e inscritos=0 por defecto.
+    Abrir/cerrar cambia el campo estado (1=abierta, 0=cerrada).
+    """
     from config.db import get_connection
     while True:
         console.rule("Clases")
@@ -498,6 +555,7 @@ def _menu_clases(_empleado) -> None:
             conn = get_connection()
             try:
                 cursor = conn.cursor(dictionary=True)
+                # Ordena por día y hora para facilitar la lectura
                 cursor.execute("SELECT * FROM CLASE ORDER BY dia, hora_inicio")
                 filas = cursor.fetchall()
             finally:
@@ -524,6 +582,7 @@ def _menu_clases(_empleado) -> None:
             hi = input("Hora inicio (HH:MM): ").strip()
             hf = input("Hora fin (HH:MM): ").strip()
             cupo = int(input("Cupo máximo: "))
+            # int(publica) convierte True→1 y False→0 para MySQL
             publica = input("¿Es pública? (S/N): ").strip().upper() == "S"
             esp = int(input("Código de especialidad: "))
             emp = int(input("Código del instructor: "))
@@ -539,6 +598,7 @@ def _menu_clases(_empleado) -> None:
                              codigo_especialidad, codigo_empleado)
                         VALUES (%s,%s,%s,%s,%s,0,%s,1,%s,%s)
                         """,
+                        # inscritos=0 y estado=1 son valores fijos al crear
                         (nombre, dia, hi, hf, cupo, int(publica), esp, emp),
                     )
                     conn.commit()
@@ -580,6 +640,7 @@ def _menu_clases(_empleado) -> None:
                 conn = get_connection()
                 try:
                     cursor = conn.cursor()
+                    # int(estado_txt == "A") convierte "A"→1 y "C"→0
                     cursor.execute(
                         "UPDATE CLASE SET estado=%s WHERE codigo_clase=%s",
                         (int(estado_txt == "A"), codigo),
@@ -597,6 +658,11 @@ def _menu_clases(_empleado) -> None:
 # RF-25 — Especialidades
 # ------------------------------------------------------------------
 def _menu_especialidades(_empleado) -> None:
+    """CRUD de especialidades con protección al eliminar (RF-25).
+
+    Antes de eliminar una especialidad, verifica que no tenga clases asociadas
+    para mantener la integridad referencial a nivel de aplicación.
+    """
     from config.db import get_connection
     while True:
         console.rule("Especialidades")
@@ -665,15 +731,17 @@ def _menu_especialidades(_empleado) -> None:
                     conn.close()
         elif op == "4":
             codigo = int(input("Código: "))
-            # Verificar que no tenga clases asociadas
+            # Verificar que no tenga clases asociadas antes de eliminar
             conn = get_connection()
             try:
                 cursor = conn.cursor(dictionary=True)
+                # COUNT(*) cuenta las clases con esta especialidad
                 cursor.execute(
                     "SELECT COUNT(*) AS total FROM CLASE WHERE codigo_especialidad=%s",
                     (codigo,),
                 )
                 if cursor.fetchone()["total"] > 0:
+                    # Si tiene clases, no se puede eliminar para mantener integridad
                     console.print("[red]No se puede eliminar: tiene clases asociadas.[/]")
                 elif confirmar():
                     cursor.execute(
@@ -692,6 +760,11 @@ def _menu_especialidades(_empleado) -> None:
 # RF-26 — Inscripciones
 # ------------------------------------------------------------------
 def _menu_inscripciones(_empleado) -> None:
+    """Consulta inscripciones por clase o por cliente, y permite cambiar su estado (RF-26).
+
+    Al cambiar el estado, ClaseService ajusta automáticamente el contador
+    de inscritos de la clase (suma al reactivar, resta al cancelar).
+    """
     from models.inscripcion_clase import InscripcionClase
     while True:
         console.rule("Inscripciones")
@@ -701,9 +774,11 @@ def _menu_inscripciones(_empleado) -> None:
             break
         elif op in ("1", "2"):
             if op == "1":
+                # Busca inscripciones por clase usando el servicio
                 codigo = int(input("Código de la clase: "))
                 inscripciones = _clase_svc.listar_inscritos(codigo)
             else:
+                # Busca inscripciones por cliente: primero busca el cliente, luego sus inscripciones
                 termino = input("Nombre o celular del cliente: ").strip()
                 clientes = _cliente_svc.buscar(termino)
                 if not clientes:
@@ -712,6 +787,7 @@ def _menu_inscripciones(_empleado) -> None:
                 for c in clientes:
                     console.print(f"  [{c.codigo_cliente}] {c.nombre_completo}")
                 codigo = int(input("Código del cliente: "))
+                # Consulta directa a la BD para obtener las inscripciones del cliente
                 from config.db import get_connection
                 conn = get_connection()
                 try:
@@ -744,6 +820,7 @@ def _menu_inscripciones(_empleado) -> None:
         elif op == "3":
             codigo = int(input("Código de la inscripción: "))
             estado_txt = input("Nuevo estado (activa/cancelada): ").strip().lower()
+            # Solo acepta los estados definidos en el modelo InscripcionClase
             if estado_txt in (InscripcionClase.ACTIVA, InscripcionClase.CANCELADA) and confirmar():
                 _clase_svc.cambiar_estado_inscripcion(codigo, estado_txt)
                 console.print("[green]Estado actualizado.[/]")
@@ -753,6 +830,11 @@ def _menu_inscripciones(_empleado) -> None:
 # RF-27 — Rutinas y asistencia
 # ------------------------------------------------------------------
 def _menu_rutinas_asistencia(_empleado) -> None:
+    """Consulta de rutinas y asistencias de cualquier cliente (RF-27).
+
+    El administrador puede ver el historial de cualquier cliente,
+    a diferencia del entrenador que solo ve los de sus propios clientes.
+    """
     while True:
         console.rule("Rutinas y asistencia")
         console.print("1. Rutinas por cliente  2. Asistencia por cliente y periodo  0. Volver")
@@ -792,6 +874,7 @@ def _menu_rutinas_asistencia(_empleado) -> None:
             codigo = int(input("Código del cliente: "))
             desde_txt = input("Desde (YYYY-MM-DD, Enter para todo): ").strip()
             hasta_txt = input("Hasta (YYYY-MM-DD, Enter para hoy): ").strip()
+            # None desactiva el filtro en listar_por_cliente
             desde = validar_fecha(desde_txt) if desde_txt else None
             hasta = validar_fecha(hasta_txt) if hasta_txt else None
             asistencias = _asistencia_svc.listar_por_cliente(codigo, desde, hasta)
@@ -812,6 +895,12 @@ def _menu_rutinas_asistencia(_empleado) -> None:
 # RF-28 — Reportes
 # ------------------------------------------------------------------
 def _menu_reportes(_empleado) -> None:
+    """Los 6 reportes administrativos del sistema (RF-28).
+
+    Los reportes 1 y 4 requieren rango de fechas; los demás no.
+    Cada reporte delega el cálculo al ReporteService que usa SQL agregado
+    (SUM, COUNT, GROUP BY, ROUND) directamente en la base de datos.
+    """
     while True:
         console.rule("Reportes")
         console.print(
@@ -827,6 +916,7 @@ def _menu_reportes(_empleado) -> None:
         if op == "0":
             break
         elif op in ("1", "4"):
+            # Reportes de periodo: requieren fecha inicio y fecha fin
             desde_txt = input("Desde (YYYY-MM-DD): ").strip()
             hasta_txt = input("Hasta (YYYY-MM-DD): ").strip()
             desde = validar_fecha(desde_txt)
@@ -835,6 +925,7 @@ def _menu_reportes(_empleado) -> None:
                 console.print("[red]Fechas inválidas.[/]")
                 continue
             if op == "1":
+                # Reporte 1: ingresos agrupados por método de pago
                 filas = _reporte_svc.ingresos_por_periodo(desde, hasta)
                 tabla = Table(title=f"Ingresos {formatear_fecha(desde)} – {formatear_fecha(hasta)}", box=box.ROUNDED)
                 tabla.add_column("Método de pago")
@@ -843,6 +934,7 @@ def _menu_reportes(_empleado) -> None:
                 for f in filas:
                     tabla.add_row(f["metodo"], str(f["cantidad_pagos"]), f"${f['total']:.2f}")
             else:
+                # Reporte 4: asistencias diarias en el periodo
                 filas = _reporte_svc.asistencia_por_periodo(desde, hasta)
                 tabla = Table(title="Asistencia diaria", box=box.ROUNDED)
                 tabla.add_column("Fecha")
@@ -851,6 +943,7 @@ def _menu_reportes(_empleado) -> None:
                     tabla.add_row(formatear_fecha(f["fecha"]), str(f["total_asistencias"]))
             console.print(tabla)
         elif op == "2":
+            # Reporte 2: cantidad de membresías por estado
             filas = _reporte_svc.membresias_por_estado()
             tabla = Table(title="Membresías por estado", box=box.ROUNDED)
             tabla.add_column("Estado")
@@ -859,6 +952,7 @@ def _menu_reportes(_empleado) -> None:
                 tabla.add_row(f["estado"], str(f["cantidad"]))
             console.print(tabla)
         elif op == "3":
+            # Reporte 3: clientes con membresía activa o vencida
             filas = _reporte_svc.clientes_activos_vencidos()
             tabla = Table(title="Clientes activos / vencidos", box=box.ROUNDED)
             tabla.add_column("Cliente")
@@ -868,6 +962,7 @@ def _menu_reportes(_empleado) -> None:
                 tabla.add_row(f["cliente"], f["estado"], formatear_fecha(f["fecha_vencimiento"]))
             console.print(tabla)
         elif op == "5":
+            # Reporte 5: porcentaje de ocupación de cada clase
             filas = _reporte_svc.ocupacion_clases()
             tabla = Table(title="Ocupación de clases", box=box.ROUNDED)
             tabla.add_column("Clase")
@@ -883,6 +978,7 @@ def _menu_reportes(_empleado) -> None:
                 )
             console.print(tabla)
         elif op == "6":
+            # Reporte 6: cantidad de clases por especialidad
             filas = _reporte_svc.clases_por_especialidad()
             tabla = Table(title="Clases por especialidad", box=box.ROUNDED)
             tabla.add_column("Especialidad")

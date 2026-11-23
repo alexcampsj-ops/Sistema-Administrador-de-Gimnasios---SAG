@@ -8,10 +8,15 @@ Uso:
 import sys
 import os
 
-# Permite importar los módulos del proyecto sin instalar el paquete
+# Agrega la carpeta actual al path de Python para que los imports
+# como "from services.auth_service import ..." funcionen correctamente
+# sin necesidad de instalar el proyecto como paquete.
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Importa la función principal del menú de inicio
 from views.menu_inicio import ejecutar
 
+# Solo ejecuta el programa si este archivo es el punto de entrada directo
+# (no si es importado como módulo desde otro archivo)
 if __name__ == "__main__":
     ejecutar()
